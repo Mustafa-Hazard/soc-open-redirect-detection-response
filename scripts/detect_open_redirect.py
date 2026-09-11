@@ -5,17 +5,28 @@ Open Redirect detection rule (log-pattern / regex based).
 Simulates a SIEM correlation rule against web access logs.
 
 Usage:
-    python3 detect_open_redirect.py <logfile>
+    python3 detect_open_redirect.py <logfile> --profile ugc
+    python3 detect_open_redirect.py <logfile> --profile juiceshop
+    python3 detect_open_redirect.py <logfile> --allowlist path/to/custom_allowlist.txt
+
+The allowlist is environment-specific and must be supplied explicitly via
+--profile (looks up configs/allowlist_<profile>.txt) or --allowlist (a
+direct path to a newline-delimited hostname file, '#' comments allowed).
+This keeps the detection logic reusable across different protected assets
+instead of hardcoding one organization's trusted domains into the rule.
 
 Exit behavior: prints one line per matched request with a verdict and reason.
 """
 
+import argparse
+import os
 import re
 import sys
 import urllib.parse
 
 # ---------------------------------------------------------------------------
-# CONFIG - tune these for your environment
+# CONFIG - static detection tuning (NOT environment-specific; do not put
+# allowlist domains here, use configs/allowlist_<profile>.txt instead)
 # ---------------------------------------------------------------------------
 
 REDIRECT_PARAM_NAMES = {
@@ -24,21 +35,41 @@ REDIRECT_PARAM_NAMES = {
     "callback", "checkout_url", "u",
 }
 
-ALLOWLISTED_DOMAINS = {
-    "github.com",
-    "blockchain.info",
-    "explorer.dash.org",
-    "etherscan.io",
-    "spreadshirt.com",
-    "stickeryou.com",
-    "leanpub.com",
-}
-
 LOG_LINE_RE = re.compile(
     r'(?P<ip>\S+) \S+ \S+ \[(?P<ts>[^\]]+)\] '
     r'"(?P<method>[A-Z]+) (?P<path>\S+) HTTP/[\d.]+" '
     r'(?P<status>\d+) (?P<size>\S+) "(?P<referrer>[^"]*)" "(?P<ua>[^"]*)"'
 )
+
+CONFIGS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "configs")
+
+
+def load_allowlist(args) -> set:
+    if args.allowlist:
+        path = args.allowlist
+    elif args.profile:
+        path = os.path.join(CONFIGS_DIR, f"allowlist_{args.profile}.txt")
+    else:
+        print("ERROR: must supply --profile <name> or --allowlist <path>.")
+        print("Example: --profile ugc   (loads configs/allowlist_ugc.txt)")
+        print("Example: --profile juiceshop   (loads configs/allowlist_juiceshop.txt)")
+        sys.exit(1)
+
+    if not os.path.isfile(path):
+        print(f"ERROR: allowlist file not found: {path}")
+        sys.exit(1)
+
+    domains = set()
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            domains.add(line.lower())
+    if not domains:
+        print(f"ERROR: allowlist file {path} loaded but contains no domains.")
+        sys.exit(1)
+    return domains
 
 
 def decode_fully(value: str, max_rounds: int = 3) -> str:
@@ -51,17 +82,17 @@ def decode_fully(value: str, max_rounds: int = 3) -> str:
     return prev
 
 
-def hostname_is_allowlisted(hostname: str) -> bool:
+def hostname_is_allowlisted(hostname: str, allowlisted_domains: set) -> bool:
     if not hostname:
         return False
     hostname = hostname.lower()
-    for allowed in ALLOWLISTED_DOMAINS:
+    for allowed in allowlisted_domains:
         if hostname == allowed or hostname.endswith("." + allowed):
             return True
     return False
 
 
-def classify_redirect_target(raw_value: str):
+def classify_redirect_target(raw_value: str, allowlisted_domains: set):
     decoded = decode_fully(raw_value)
     stripped = decoded.strip()
 
@@ -85,7 +116,7 @@ def classify_redirect_target(raw_value: str):
         host = parsed.hostname or ""
         at_trick = "@" in (parsed.netloc or "")
 
-        if hostname_is_allowlisted(host):
+        if hostname_is_allowlisted(host, allowlisted_domains):
             if at_trick:
                 return "suspicious", f"@ userinfo trick against allowlisted-looking netloc ({parsed.netloc})"
             return "benign", f"absolute URL to allowlisted host ({host})"
@@ -98,7 +129,7 @@ def classify_redirect_target(raw_value: str):
     return "review", f"unrecognized redirect value pattern: {stripped[:60]!r}"
 
 
-def scan_log(path: str):
+def scan_log(path: str, allowlisted_domains: set):
     findings = []
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         for lineno, line in enumerate(f, 1):
@@ -115,7 +146,7 @@ def scan_log(path: str):
                 if pname.lower() not in REDIRECT_PARAM_NAMES:
                     continue
                 for val in values:
-                    verdict, reason = classify_redirect_target(val)
+                    verdict, reason = classify_redirect_target(val, allowlisted_domains)
                     findings.append({
                         "line": lineno,
                         "ip": m.group("ip"),
@@ -131,11 +162,16 @@ def scan_log(path: str):
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python3 detect_open_redirect.py <logfile>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Open Redirect detection rule against web access logs.")
+    parser.add_argument("logfile", help="Path to the access log file to scan.")
+    parser.add_argument("--profile", choices=["ugc", "juiceshop"],
+                         help="Named allowlist profile (loads configs/allowlist_<profile>.txt).")
+    parser.add_argument("--allowlist", help="Direct path to a custom allowlist file.")
+    args = parser.parse_args()
 
-    findings = scan_log(sys.argv[1])
+    allowlisted_domains = load_allowlist(args)
+
+    findings = scan_log(args.logfile, allowlisted_domains)
     if not findings:
         print("No redirect-parameter requests found in log.")
         return
