@@ -1,0 +1,10 @@
+[ALERT] line   1 | ::ffff:172.17.0.1 | param=to           value='http://evil.com'                                              -> absolute URL to non-allowlisted external host (evil.com)
+[ok]     line   2 | ::ffff:172.17.0.1 | param=to           value='/'                                                            -> relative path, cannot redirect off-site
+[ok]     line   3 | ::ffff:172.17.0.1 | param=to           value='https://github.com/juice-shop/juice-shop'                     -> absolute URL to allowlisted host (github.com)
+[ALERT] line   4 | ::ffff:172.17.0.1 | param=to           value='http://evil.com/?x=https://github.com/juice-shop/juice-shop'  -> absolute URL to non-allowlisted external host (evil.com)
+
+--- Summary ---
+Total redirect-param requests examined : 4
+  Suspicious (would fire SOC alert)     : 2
+  Needs manual review                   : 0
+  Benign                                : 2
