@@ -1,0 +1,51 @@
+title: Possible Open Redirect Exploitation Attempt
+id: 7f2a9e3c-1b4d-4a6e-9c2f-3d8e5b1a7c40
+status: experimental
+description: >
+  Detects HTTP requests containing a known redirect-carrying parameter
+  (redirect, next, url, dest, continue, target, etc.) whose value points
+  to an external, non-allowlisted host, uses protocol-relative "//",
+  a backslash-as-slash bypass, an "@" userinfo trick, or a non-http
+  scheme (javascript:, data:) — all recognized Open Redirect abuse
+  patterns.
+author: SOC Blue Team (Week 4 exercise)
+date: 2026/09/11
+logsource:
+  category: webserver
+  product: nginx   # also applies to apache / ALB / CDN access logs
+detection:
+  selection_param:
+    cs-uri-query|contains:
+      - 'redirect='
+      - 'redir='
+      - 'url='
+      - 'next='
+      - 'return='
+      - 'return_url='
+      - 'dest='
+      - 'continue='
+      - 'target='
+      - 'out='
+      - 'forward='
+      - 'to='
+  selection_pattern:
+    cs-uri-query|re: '(?i)(redirect|redir|url|next|return|return_url|dest|continue|target|out|forward|to)=(https?%3a%2f%2f|https?:\/\/|%2f%2f|\/\/\/?|\\\\|javascript:|data:|vbscript:)'
+  filter_allowlisted_host:
+    cs-uri-query|contains:
+      - 'ugc-creator-hub.com'
+      - 'accounts.google.com'
+      - 'checkout.stripe.com'
+  condition: selection_param and selection_pattern and not filter_allowlisted_host
+falsepositives:
+  - Legitimate absolute-URL redirects to newly added partner domains not
+    yet in the allowlist (update allowlist, do not disable rule).
+  - Redirect values that merely CONTAIN an allowlisted domain name as a
+    substring of an attacker domain (e.g. ugc-creator-hub.com.evil.io) —
+    this rule's "contains" filter is coarse; the companion Python /
+    Wazuh rule does correct hostname parsing and should be treated as
+    authoritative for that case.
+level: medium
+tags:
+  - attack.initial_access
+  - attack.t1204  # user execution / phishing follow-on
+  - web.open_redirect

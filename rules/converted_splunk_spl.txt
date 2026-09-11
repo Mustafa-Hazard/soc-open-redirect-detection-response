@@ -1,0 +1,2 @@
+"cs-uri-query" IN ("*redirect=*", "*redir=*", "*url=*", "*next=*", "*return=*", "*return_url=*", "*dest=*", "*continue=*", "*target=*", "*out=*", "*forward=*", "*to=*") NOT ("cs-uri-query" IN ("*ugc-creator-hub.com*", "*accounts.google.com*", "*checkout.stripe.com*"))
+| regex cs-uri-query="(?i)(redirect|redir|url|next|return|return_url|dest|continue|target|out|forward|to)=(https?%3a%2f%2f|https?:\\/\\/|%2f%2f|\\/\\/\\/?|\\\\\\\\|javascript:|data:|vbscript:)"

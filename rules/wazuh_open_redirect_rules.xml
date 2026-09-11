@@ -1,0 +1,62 @@
+<!--
+  Custom Wazuh rules - Open Redirect detection
+  Place in /var/ossec/etc/rules/local_rules.xml (or a dedicated
+  open_redirect_rules.xml included from ossec.conf).
+
+  Assumes web access logs are already being decoded by Wazuh's built-in
+  'web-accesslog' decoder (nginx/apache) so that fields such as
+  url and status are populated.
+
+  Group 950xx is used here as a placeholder local rule ID range -
+  renumber to fit your existing local rule allocation.
+-->
+<group name="web,open_redirect,attack,">
+
+  <!-- Base rule: request contains a known redirect parameter name -->
+  <rule id="950100" level="3">
+    <if_group>web-accesslog|attack</if_group>
+    <url type="pcre2">(?i)[?&amp;](redirect|redir|url|next|return|return_url|dest|continue|target|out|forward|to)=</url>
+    <description>Web request contains a redirect-carrying parameter</description>
+    <group>open_redirect_candidate</group>
+  </rule>
+
+  <!-- Escalation: redirect parameter value uses a known bypass pattern -->
+  <rule id="950101" level="10">
+    <if_sid>950100</if_sid>
+    <url type="pcre2">(?i)(redirect|redir|url|next|return|return_url|dest|continue|target|out|forward|to)=(https?%3a%2f%2f|https?:\/\/|%2f%2f|\/{2,}|\\\\|javascript:|data:|vbscript:)</url>
+    <description>Open Redirect pattern detected: absolute/protocol-relative/scheme-based redirect target</description>
+    <mitre>
+      <id>T1204</id>
+    </mitre>
+    <group>open_redirect_attempt</group>
+  </rule>
+
+  <!-- Escalation: userinfo "@" trick embedding a trusted-looking hostname -->
+  <rule id="950102" level="12">
+    <if_sid>950100</if_sid>
+    <url type="pcre2">(?i)(redirect|redir|url|next|return|return_url|dest|continue|target|out|forward|to)=https?(%3a%2f%2f|:\/\/)[^&amp;]*%40[^&amp;]*</url>
+    <description>Open Redirect: '@' userinfo trick against a trusted-looking netloc (high-confidence phishing indicator)</description>
+    <mitre>
+      <id>T1204</id>
+      <id>T1566</id>
+    </mitre>
+    <group>open_redirect_attempt,high_confidence</group>
+  </rule>
+
+  <!-- Noise reduction: known allowlisted redirect destinations -->
+  <rule id="950103" level="0">
+    <if_sid>950101,950102</if_sid>
+    <url type="pcre2">(?i)(ugc-creator-hub\.com|accounts\.google\.com|checkout\.stripe\.com)</url>
+    <description>Open Redirect pattern to an allowlisted destination - suppressed</description>
+    <group>open_redirect_suppressed</group>
+  </rule>
+
+  <!-- Correlation: same source IP tripping 950101/950102 repeatedly -->
+  <rule id="950104" level="12" frequency="5" timeframe="120">
+    <if_matched_sid>950101</if_matched_sid>
+    <same_source_ip />
+    <description>Multiple Open Redirect attempts from the same source IP within 2 minutes - likely automated scanning/campaign</description>
+    <group>open_redirect_campaign</group>
+  </rule>
+
+</group>
