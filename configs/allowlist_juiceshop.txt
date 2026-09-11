@@ -1,0 +1,9 @@
+# Allowlist profile: real OWASP Juice Shop validation target
+# Matches Juice Shop's own lib/insecurity.ts allowlist entries.
+github.com
+blockchain.info
+explorer.dash.org
+etherscan.io
+spreadshirt.com
+stickeryou.com
+leanpub.com

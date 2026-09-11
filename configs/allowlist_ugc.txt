@@ -1,0 +1,5 @@
+# Allowlist profile: fictional UGC Creator platform (assignment scenario)
+# One hostname per line. Matches exact host or any subdomain.
+ugc-creator-hub.com
+accounts.google.com
+checkout.stripe.com
