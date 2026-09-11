@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Open Redirect — SOC Case File</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #14171C;
+    --panel: #1C2029;
+    --panel-raised: #21252F;
+    --line: #2A2F3A;
+    --text: #E8E6DE;
+    --text-dim: #9A9FAC;
+    --amber: #E8A33D;
+    --green: #4FA87D;
+    --amber-bg: rgba(232, 163, 61, 0.10);
+    --green-bg: rgba(79, 168, 125, 0.10);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    line-height: 1.5;
+  }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 64px 24px 96px;
+  }
+
+  /* ---------- Hero ---------- */
+
+  .hero-label {
+    font-size: 14px;
+    color: var(--text-dim);
+    margin: 0 0 20px;
+    font-weight: 500;
+  }
+
+  .hero-stat {
+    font-size: clamp(48px, 9vw, 88px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0;
+    line-height: 1.05;
+  }
+
+  .hero-stat .num {
+    color: var(--amber);
+  }
+
+  .hero-sub {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 62ch;
+    margin: 20px 0 0;
+  }
+
+  .hero-links {
+    margin-top: 28px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .hero-links a {
+    color: var(--text);
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    padding: 10px 18px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: border-color 0.15s ease;
+  }
+
+  .hero-links a:hover {
+    border-color: var(--amber);
+  }
+
+  /* ---------- Section headers ---------- */
+
+  section {
+    margin-top: 72px;
+  }
+
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 16px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+  }
+
+  .section-head h2 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .section-tally {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  .section-desc {
+    color: var(--text-dim);
+    font-size: 15px;
+    max-width: 68ch;
+    margin: 16px 0 24px;
+  }
+
+  /* ---------- Log lines ---------- */
+
+  .log {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--panel);
+  }
+
+  .log-line {
+    display: grid;
+    grid-template-columns: 74px 1fr;
+    gap: 14px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    align-items: start;
+  }
+
+  .log-line:last-child { border-bottom: none; }
+
+  .tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-align: center;
+    height: fit-content;
+    letter-spacing: 0.02em;
+  }
+
+  .tag.alert { background: var(--amber-bg); color: var(--amber); }
+  .tag.ok { background: var(--green-bg); color: var(--green); }
+
+  .log-body { min-width: 0; }
+
+  .log-req {
+    color: var(--text);
+    word-break: break-all;
+  }
+
+  .log-req .param { color: var(--text-dim); }
+
+  .log-reason {
+    color: var(--text-dim);
+    margin-top: 4px;
+    font-size: 12px;
+  }
+
+  .callout {
+    margin: 16px 0 0;
+    padding: 14px 18px;
+    background: var(--panel-raised);
+    border-left: 3px solid var(--amber);
+    border-radius: 0 6px 6px 0;
+    font-size: 14px;
+    color: var(--text);
+  }
+
+  .callout strong { color: var(--amber); }
+
+  /* ---------- Reproduce ---------- */
+
+  .repro pre {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 20px;
+    overflow-x: auto;
+    line-height: 1.7;
+    color: var(--text);
+  }
+
+  .repro pre .comment { color: var(--text-dim); }
+
+  footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+
+  @media (max-width: 560px) {
+    .log-line { grid-template-columns: 1fr; }
+    .tag { width: fit-content; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero-label">SOC case file — Open Redirect detection & response</div>
+  <h1 class="hero-stat"><span class="num" id="heroCount">0</span> real bypass caught, 0 false positives</h1>
+  <p class="hero-sub">
+    A blue-team exercise that went past synthetic log samples: a live OWASP Juice Shop
+    container was exploited for real, and the detection rule below caught the bypass
+    that fooled the application's own security control.
+  </p>
+  <div class="hero-links">
+    <a href="./SOC_Runbook_Open_Redirect.md">Read the full runbook</a>
+    <a href="./scripts/detect_open_redirect.py">View the detection script</a>
+    <a href="https://github.com/Mustafa-Hazard/soc-open-redirect-detection-response">GitHub repo</a>
+  </div>
+
+  <!-- Exhibit A: Real Juice Shop exploit -->
+  <section>
+    <div class="section-head">
+      <h2>Exhibit A — real exploit, live target</h2>
+      <span class="section-tally">2 alert · 2 ok · 4 total</span>
+    </div>
+    <p class="section-desc">
+      OWASP Juice Shop, run locally via Docker. Its own redirect allowlist check
+      (<code>lib/insecurity.ts</code>) uses <code>url.includes(allowedUrl)</code> — a
+      substring match rather than an exact host match. Line 4 below is the result:
+      a URL that passes Juice Shop's own check but actually redirects to
+      <code>evil.com</code>.
+    </p>
+    <div class="log" id="exhibitA"></div>
+    <div class="callout">
+      <strong>Why this matters:</strong> the detection rule caught the bypass on line 4
+      even though the target application's own security control let it through. This is
+      real, reproducible evidence that an independent detection layer adds value beyond
+      the app's own defenses — not a simulated result.
+    </div>
+  </section>
+
+  <!-- Exhibit B: synthetic attack sample -->
+  <section>
+    <div class="section-head">
+      <h2>Exhibit B — synthetic attack sample</h2>
+      <span class="section-tally">11 alert · 1 ok · 12 total</span>
+    </div>
+    <p class="section-desc">
+      Hand-crafted requests covering known Open Redirect bypass patterns: absolute
+      URLs to external hosts, protocol-relative <code>//</code>, the <code>@</code>
+      userinfo trick, backslash-as-slash, lookalike subdomains, and non-http schemes.
+    </p>
+    <div class="log" id="exhibitB"></div>
+    <div class="callout">
+      <strong>Line 9 is deliberate, not a miss:</strong>
+      <code>accounts.ugc-creator-hub.com//.evil.co/login</code> parses to a real,
+      allowlisted host — <code>.evil.co</code> is just a path segment. A naive rule
+      matching for <code>//</code> or a keyword anywhere in the string would have
+      false-alarmed here; correct hostname parsing does not.
+    </div>
+  </section>
+
+  <!-- Exhibit C: synthetic benign sample -->
+  <section>
+    <div class="section-head">
+      <h2>Exhibit C — synthetic benign sample</h2>
+      <span class="section-tally">0 alert · 12 ok · 12 total</span>
+    </div>
+    <p class="section-desc">
+      Normal traffic: relative-path redirects, links to the platform's own domain,
+      and legitimate third-party destinations (OAuth continuation, payment checkout).
+      None of it should alert.
+    </p>
+    <div class="log" id="exhibitC"></div>
+  </section>
+
+  <!-- Reproduce -->
+  <section class="repro">
+    <div class="section-head">
+      <h2>Reproduce this yourself</h2>
+    </div>
+    <p class="section-desc">No build step. Clone, install nothing beyond Python 3's standard library, and run.</p>
+    <pre><span class="comment"># clone the repo</span>
+git clone https://github.com/Mustafa-Hazard/soc-open-redirect-detection-response.git
+cd soc-open-redirect-detection-response
+
+<span class="comment"># run the detector against the synthetic samples</span>
+python3 scripts/detect_open_redirect.py --profile ugc samples/attack_sample.log
+python3 scripts/detect_open_redirect.py --profile ugc samples/benign_sample.log
+
+<span class="comment"># run it against the real Juice Shop exploit log</span>
+python3 scripts/detect_open_redirect.py --profile juiceshop results/juice_shop_access.log
+
+<span class="comment"># optional: reproduce the live exploit yourself</span>
+docker run -d --name juice-shop -p 3000:3000 bkimminich/juice-shop
+curl -v "http://localhost:3000/redirect?to=http://evil.com/?x=https://github.com/juice-shop/juice-shop"</pre>
+  </section>
+
+  <footer>
+    Testing was performed exclusively against a self-hosted OWASP Juice Shop
+    container. No third-party systems were scanned or exploited. See
+    <a href="./SOC_Runbook_Open_Redirect.md" style="color: inherit;">SOC_Runbook_Open_Redirect.md</a>
+    for the full triage checklist, incident-response playbook, and documented
+    detection blind spots.
+  </footer>
+
+</div>
+
+<script>
+  // Real captured data from scripts/detect_open_redirect.py runs.
+  const exhibitA = [
+    { tag: 'alert', param: 'to', value: 'http://evil.com', reason: 'absolute URL to non-allowlisted external host (evil.com)' },
+    { tag: 'ok', param: 'to', value: '/', reason: 'relative path, cannot redirect off-site' },
+    { tag: 'ok', param: 'to', value: 'https://github.com/juice-shop/juice-shop', reason: 'absolute URL to allowlisted host (github.com)' },
+    { tag: 'alert', param: 'to', value: 'http://evil.com/?x=https://github.com/juice-shop/juice-shop', reason: 'absolute URL to non-allowlisted external host (evil.com) — the real bypass' },
+  ];
+
+  const exhibitB = [
+    { tag: 'alert', param: 'redirect', value: 'http://evil-phish.ru/steal', reason: 'absolute URL to non-allowlisted external host' },
+    { tag: 'alert', param: 'next', value: '//attacker.net/creds', reason: 'protocol-relative (//) redirect' },
+    { tag: 'alert', param: 'url', value: 'https://ugc-creator-hub.com@evil-lookalike.com/payload', reason: '@ userinfo trick' },
+    { tag: 'alert', param: 'dest', value: 'http://evil.tk/finalize-login', reason: 'absolute URL to non-allowlisted external host' },
+    { tag: 'alert', param: 'to', value: '\\t//malicious-cdn.top/asset.js', reason: 'protocol-relative + control-char prefix' },
+    { tag: 'alert', param: 'return_url', value: 'https://ugc-creator-hub.com.evilproxy.io/verify', reason: 'lookalike subdomain of attacker domain' },
+    { tag: 'alert', param: 'continue', value: '//evil-payload-host.xyz/harvest', reason: 'protocol-relative (//) redirect' },
+    { tag: 'alert', param: 'target', value: 'http:\\\\evil-backslash-trick.com\\phish', reason: 'backslash-as-slash bypass' },
+    { tag: 'ok', param: 'redirect', value: 'https://accounts.ugc-creator-hub.com//.evil.co/login', reason: 'host is the real, allowlisted domain — see callout below' },
+    { tag: 'alert', param: 'url', value: 'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==', reason: 'non-http scheme in redirect target' },
+    { tag: 'alert', param: 'next', value: 'javascript:alert(document.domain)', reason: 'non-http scheme in redirect target' },
+    { tag: 'alert', param: 'url', value: '///evil-triple-slash.net/x', reason: 'protocol-relative (//) redirect' },
+  ];
+
+  const exhibitC = [
+    { tag: 'ok', param: 'redirect', value: '/dashboard', reason: 'relative path' },
+    { tag: 'ok', param: 'next', value: '/settings/profile', reason: 'relative path' },
+    { tag: 'ok', param: 'url', value: 'https://ugc-creator-hub.com/creator/janedoe', reason: 'allowlisted host' },
+    { tag: 'ok', param: 'dest', value: 'https://cdn.ugc-creator-hub.com/videos/12345.mp4', reason: 'allowlisted host (subdomain)' },
+    { tag: 'ok', param: 'continue', value: 'https://accounts.google.com/o/oauth2/continue', reason: 'allowlisted host (OAuth continuation)' },
+    { tag: 'ok', param: 'return_url', value: '/creator/onboarding/step2', reason: 'relative path' },
+    { tag: 'ok', param: 'to', value: '/external-partners/brandco', reason: 'relative path' },
+    { tag: 'ok', param: 'redirect', value: 'https://partners.ugc-creator-hub.com/campaign/summer', reason: 'allowlisted host (subdomain)' },
+    { tag: 'ok', param: 'url', value: 'https://checkout.stripe.com/pay/cs_test_12345', reason: 'allowlisted host (payment provider)' },
+    { tag: 'ok', param: 'next', value: '/notifications', reason: 'relative path' },
+    { tag: 'ok', param: 'url', value: '/creator/upload/status', reason: 'relative path' },
+    { tag: 'ok', param: 'redirect', value: 'https://ugc-creator-hub.com/welcome', reason: 'allowlisted host' },
+  ];
+
+  function render(id, rows) {
+    const el = document.getElementById(id);
+    el.innerHTML = rows.map((r, i) => `
+      <div class="log-line">
+        <span class="tag ${r.tag}">${r.tag === 'alert' ? 'ALERT' : 'OK'}</span>
+        <div class="log-body">
+          <div class="log-req">line ${i + 1} · <span class="param">${r.param}=</span>${escapeHtml(r.value)}</div>
+          <div class="log-reason">${escapeHtml(r.reason)}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  render('exhibitA', exhibitA);
+  render('exhibitB', exhibitB);
+  render('exhibitC', exhibitC);
+
+  // Single deliberate reveal: count the hero number up once on load.
+  (function animateHero() {
+    const target = 1;
+    const el = document.getElementById('heroCount');
+    let current = 0;
+    const step = () => {
+      current += 1;
+      el.textContent = current;
+      if (current < target) requestAnimationFrame(() => setTimeout(step, 120));
+    };
+    step();
+  })();
+</script>
+
+</body>
+</html>
