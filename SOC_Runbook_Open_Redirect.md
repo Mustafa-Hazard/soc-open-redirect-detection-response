@@ -53,7 +53,7 @@ into whatever stack is available:
 |---|---|
 | `rules/open_redirect.sigma.yml` | Vendor-agnostic Sigma rule — convert with `sigma-cli` to Splunk SPL, Elastic Query DSL, etc. |
 | `rules/wazuh_open_redirect_rules.xml` | Native Wazuh local rule, layered (base match → pattern match → high-confidence `@`-trick → allowlist suppression → same-IP frequency correlation). |
-| `scripts/detect_open_redirect.py` | Standalone Python reference implementation used to actually test the logic in this exercise (does full URL-decode + hostname parsing, which the regex-only rules approximate). |
+| `scripts/detect_open_redirect.py` | Standalone Python reference implementation used to actually test the logic in this exercise (does full URL-decode + hostname parsing, which the regex-only rules approximate). Allowlist is supplied externally via `--profile ugc\|juiceshop` or `--allowlist <path>` — not hardcoded — so the same detection logic can be pointed at different protected assets without editing the script. |
 
 ### Rule logic (plain language)
 1. Match requests where a known redirect-carrying parameter is present (`redirect`, `redir`, `url`, `next`, `return`, `return_url`, `dest`, `continue`, `target`, `out`, `forward`, `to`).
@@ -80,8 +80,9 @@ which changes far less often.
 
 ## 3. Test Results
 
-Both sample logs were run through `scripts/detect_open_redirect.py`.
-Full raw output is in `results/test_output.txt`; key lines below.
+Both sample logs were run through `scripts/detect_open_redirect.py --profile ugc`
+(loading `configs/allowlist_ugc.txt`, the fictional UGC Creator platform's
+trusted domains). Full raw output is in `results/test_output.txt`; key lines below.
 
 ### Attack sample (`samples/attack_sample.log`) — 12 redirect requests
 
@@ -207,6 +208,7 @@ single alert.
 4. **IDN/punycode homograph domains.** A domain using look-alike Unicode characters (rendering visually similar to the real brand) that isn't a literal subdomain string won't be caught by the current allowlist/lookalike logic, since it operates on ASCII substrings. Needs a dedicated homograph-detection check (NFKC normalization + confusable-character mapping) as a follow-up enhancement.
 5. **Allowlist drift.** Every new legitimate partner/subdomain requires a manual allowlist update on both the SIEM rule and the app code. Until that update happens, legitimate new integrations will generate false positives (safe failure mode) — but if the *code-level* allowlist is updated without a matching SIEM update, real attacks against the new pattern could go undetected until the SIEM allowlist catches up. Keep a change-log/ticket requirement tying the two together.
 6. **CDN/proxy layers that strip or rewrite query strings before they reach origin logs.** If a CDN caches or rewrites redirect requests, the access log seen by the SIEM may not reflect the original attacker-supplied value. Verify logging is configured at the layer closest to the actual redirect logic (origin, not just edge cache).
+7. **Wrong or missing `--profile`/`--allowlist` at run time.** The detector requires an explicit allowlist selection; if an analyst runs it against the wrong protected asset's log with the wrong profile (or a future integration forgets to pass one), it fails safe by erroring out rather than silently using a stale or wrong allowlist — but this still requires operational discipline (documented run commands, not ad-hoc invocation) to avoid analyst error at 2am during an incident.
 
 ---
 
@@ -218,14 +220,27 @@ soc_open_redirect/
 ├── rules/
 │   ├── open_redirect.sigma.yml       <- vendor-agnostic Sigma rule
 │   └── wazuh_open_redirect_rules.xml <- native Wazuh local rule set
+├── configs/
+│   ├── allowlist_ugc.txt             <- trusted domains for the fictional UGC Creator scenario
+│   └── allowlist_juiceshop.txt       <- trusted domains for the real Juice Shop validation target
 ├── samples/
 │   ├── attack_sample.log             <- 12 attack requests (test input)
 │   └── benign_sample.log             <- 12 legitimate requests (test input)
 ├── scripts/
-│   └── detect_open_redirect.py       <- reference detection implementation
+│   └── detect_open_redirect.py       <- reference detection implementation (--profile ugc|juiceshop or --allowlist <path>)
 └── results/
-    └── test_output.txt               <- raw output of running the script against both samples
+    ├── test_output.txt               <- raw output of running the script against both samples
+    ├── juice_shop_access.log         <- real access log pulled from the live Juice Shop container
+    └── juice_shop_test_results.txt   <- real detector output against that log
 ```
+
+**Allowlist is environment-specific, not hardcoded.** The detection
+logic in `scripts/detect_open_redirect.py` is reused unchanged across
+targets; only the allowlist file passed via `--profile` or `--allowlist`
+changes. This avoids the failure mode discovered mid-project: an
+earlier version hardcoded one target's allowlist directly into the
+script, which silently broke detection (50% false-positive rate) the
+moment the script was pointed at a different protected asset.
 
 **Lab/authorization note:** the sample logs in `samples/` are synthetic,
 generated for this exercise. All live testing (Section 8 below) was
@@ -281,10 +296,10 @@ actual host to `evil.com`. The application redirected the user there.
 
 Real combined-format log lines were pulled directly from the container
 (`docker cp juice-shop:/juice-shop/logs/access.log.<date> .`) and run
-through `scripts/detect_open_redirect.py` (with `ALLOWLISTED_DOMAINS`
-updated to Juice Shop's actual allowlist: `github.com`,
-`blockchain.info`, `explorer.dash.org`, `etherscan.io`,
-`spreadshirt.com`, `stickeryou.com`, `leanpub.com`):
+through `scripts/detect_open_redirect.py --profile juiceshop`, which loads
+`configs/allowlist_juiceshop.txt` — Juice Shop's actual allowlist:
+`github.com`, `blockchain.info`, `explorer.dash.org`, `etherscan.io`,
+`spreadshirt.com`, `stickeryou.com`, `leanpub.com`:
 
 ```
 [ALERT] line   1 | ::ffff:172.17.0.1 | param=to | value='http://evil.com'
