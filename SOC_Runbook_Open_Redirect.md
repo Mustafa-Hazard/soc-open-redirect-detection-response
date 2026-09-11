@@ -142,7 +142,7 @@ Use this when a `950101` / `950102` (Wazuh) or "Possible Open Redirect"
 single alert.
 
 1. **Read the raw redirect parameter value in full (decoded).** Don't trust the truncated SIEM preview — copy the full query string and URL-decode it in a scratch tool (not a browser) to see the real destination host.
-2. **Identify the destination host and check it against the current allowlist.** If it should be allowlisted (e.g., a newly launched partner domain), this is a tuning task, not an incident — update the allowlist and suppress this alert instance.
+2. **Identify the destination host and check it against the current allowlist** (`configs/allowlist_ugc.txt` in production; confirm which `--profile` is in use if unsure). If it should be allowlisted (e.g., a newly launched partner domain), this is a tuning task, not an incident — update the allowlist file and suppress this alert instance.
 3. **Check the source IP reputation and volume.** How many requests from this IP/ASN in the last hour? A single request from a residential IP with a normal browser UA is lower priority than a burst from a datacenter IP with `curl`/`python-requests` as the user agent.
 4. **Check whether the request reached a live user session.** Was this endpoint actually hit by a real, authenticated session (potential victim), or is it an unauthenticated scan hitting the redirect endpoint directly? Pull the session/user ID if present in the log.
 5. **Check the HTTP response code and whether the redirect was actually served.** A `302`/`301` response means the redirect fired. If the app already validates and returned `400`/`403`, the exploit attempt failed at the app layer — downgrade severity but still log it (attacker is probing).
@@ -188,7 +188,7 @@ single alert.
 - Enforce redirect-target validation **server-side, at the code level**, not just at the SIEM/WAF: only allow relative paths, or absolute URLs whose host exactly matches an allowlist maintained in application config (mirrors the detection rule's own allowlist — keep them in sync).
 - For OAuth/SSO flows specifically, validate `redirect_uri` / `continue` against the **exact, pre-registered** callback URL for that client — not a substring or prefix match.
 - Add automated regression tests (e.g., a lightweight DAST/SAST check in CI) that specifically try the bypass patterns in this document (protocol-relative, `@`-trick, backslash, encoded slashes, non-http schemes) against every redirect-capable endpoint before each release.
-- Keep the SIEM allowlist and the application-code allowlist in the same source of truth (or auto-generate one from the other) so they can't silently drift apart.
+- Keep the SIEM allowlist and the application-code allowlist in the same source of truth (or auto-generate one from the other) so they can't silently drift apart. In this project, `configs/allowlist_ugc.txt` is that source of truth for the detection side — application engineering's code-level allowlist should be reviewed against it on the same change cadence.
 - Track **MTTD** (mean time to detect — alert fire time minus request time, should be near-zero for real-time SIEM ingestion) and **MTTR** (mean time to remediate — alert fire time to confirmed fix/containment) for this alert class, and review both monthly.
 
 ---
@@ -246,6 +246,20 @@ moment the script was pointed at a different protected asset.
 generated for this exercise. All live testing (Section 8 below) was
 performed exclusively against a self-hosted OWASP Juice Shop container
 under my own control — no third-party systems were scanned or exploited.
+
+**Scope decision — Wazuh/ELK deployment:** a full Wazuh/ELK stack was
+deliberately not deployed for this exercise. The Sigma and Wazuh rules
+(`rules/`) are authored and, for Sigma, mechanically converted to
+Splunk/Elastic query syntax via `sigma-cli` — but neither has been
+loaded into a live SIEM instance. Detection logic is instead validated
+through the Python reference implementation (`scripts/detect_open_redirect.py`),
+run against both synthetic samples and a real access log pulled from a
+live, exploited OWASP Juice Shop container (Section 8). This is judged
+sufficient validation for this exercise's scope: it proves the
+detection *logic* works against a real, reproducible vulnerability,
+which is the harder and more valuable thing to get right. Deploying an
+actual SIEM instance is flagged as a natural next step, not a gap in
+what was tested here.
 
 ---
 
