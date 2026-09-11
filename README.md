@@ -1,4 +1,3 @@
-```
 # SOC Open Redirect Detection & Response
 
 **A blue-team SOC exercise — detecting and responding to Open Redirect exploitation, validated against a real, live vulnerability.**
@@ -92,4 +91,3 @@ All live testing was performed against infrastructure I control — a local Dock
 ## Read the full runbook
 
 👉 **[SOC_Runbook_Open_Redirect.md](./SOC_Runbook_Open_Redirect.md)** — detection logic, tuning notes, triage checklist, full IR playbook, blind spots, and the complete Juice Shop validation writeup.
-```
